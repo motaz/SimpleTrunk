@@ -802,10 +802,10 @@ func SaveNode(r *http.Request, fileName, nodename, url string) (res ResponseType
 
 func GetReloadCommand(fileName string) (command, caption string) {
 
-	if fileName == "extensions.conf" || fileName == "sip.conf" {
+	if fileName == "extensions.conf" || fileName == "sip.conf" || fileName == "pjsip.conf" {
 		command = "dialplanreload"
 		caption = "Reload Dialplan"
-		if fileName == "sip.conf" {
+		if strings.Contains("sip.conf", fileName) {
 			command = "sipreload"
 			caption = "Reload SIP"
 		}

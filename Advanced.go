@@ -92,7 +92,7 @@ func GetAdvancedHeader(User UserType, page, page2 string, r *http.Request) (Data
 		Tabs = TabsType{Selected: page2, Text: "CLI Commands",
 			Tabs: []TabType{
 				{Value: "?command=corereload", Name: "core reload"},
-				{Value: "?command=sipreload", Name: "sip reload"},
+				{Value: "?command=sipreload", Name: sip + " reload"},
 				{Value: "?command=dialplanreload", Name: "dialplan reload"},
 				{Value: "?command=version", Name: "version"},
 				{Value: "?command=help", Name: "Help"},
@@ -156,7 +156,7 @@ func Status(w http.ResponseWriter, r *http.Request) {
 			case "codecs":
 				commandLine = "core show codecs"
 			case "stats":
-				commandLine = "sip show channelstats"
+				commandLine = sip + " show channelstats"
 				commandName = "Channel stats."
 			case "queues":
 				commandLine = "queue show"
