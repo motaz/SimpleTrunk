@@ -2,7 +2,8 @@
 <br>
 <h2>SIP Nodes</h2>
 {{ if .IsAdmin}}
-<a href='EditNode?filename=sip.conf' class='linkbutton'>
+{{ $sip := .Sip}}
+<a href='EditNode?filename={{$sip}}.conf' class='linkbutton'>
 
 Add new SIP node</a>
 {{end}}

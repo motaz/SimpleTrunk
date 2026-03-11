@@ -1176,6 +1176,12 @@ func doAddAMIUser(r *http.Request, w http.ResponseWriter, Aurl string) (err erro
 	obj["Read"] = r.FormValue("read")
 	obj["Write"] = r.FormValue("write")
 	obj["Addi"] = r.FormValue("addi")
+	// HACK: the `;` reading create a runtime error (index out of range)
+	for _, value := range obj {
+		if strings.Contains(value, ";"){
+			return errors.New("the `;` character is reserved for comments, do not use it")
+		}
+	}
 	bytes, _ := json.Marshal(obj)
 	var response []byte
 	response, err = restCallURL(Aurl+"AddAMIUser", bytes)
@@ -1188,7 +1194,7 @@ func doAddAMIUser(r *http.Request, w http.ResponseWriter, Aurl string) (err erro
 			err = errors.New("Error in Adding AMI User: " + res.Message)
 		}
 	}
-	return
+	return err
 }
 
 func editAMIUserForm(Aurl, uname string) (err error, spl []string, user string) {
@@ -1219,6 +1225,12 @@ func doModAMIUser(r *http.Request, w http.ResponseWriter, Aurl string) (err erro
 	obj["Read"] = r.FormValue("read")
 	obj["Write"] = r.FormValue("write")
 	obj["Addi"] = r.FormValue("addi")
+	// HACK: the `;` reading create a runtime error (index out of range)
+	for _, value := range obj {
+		if strings.Contains(value, ";"){
+			return errors.New("the `;` character is reserved for comments, do not use it")
+		}
+	}
 	req, _ := json.Marshal(obj)
 	var data []byte
 	data, err = restCallURL(Aurl+"ModifyAMIUser", req)
