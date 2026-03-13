@@ -1359,6 +1359,10 @@ func AMIUsers(pbxfile, Aurl string) (users []AMIUserType, success bool, err erro
 					spl := strings.Split(res.Result, ";")
 					for i := 0; i+1 < len(spl); i++ {
 						spl1 := strings.Split(spl[i], ":")
+						// prevent the runtime error when reading comments
+						if len(spl1) < 2{
+							continue
+						}
 						user := strings.ReplaceAll(spl1[0], "[", "")
 						user = strings.ReplaceAll(user, "]", "")
 						users = append(users, AMIUserType{User: user, Spl: spl1, Default: getDefault(user, spl1[1], pbxfile)})
