@@ -24,6 +24,12 @@ function setSubdirectory(avalue){
 <td><button onclick = "setSubdirectory('{{.Name}}');" class='btn' >Enter</button></td>
 {{else}}
 <td><a href='DownloadSound?filename={{$dir}}{{.Name}}'>Download</a></td>
+  <td>
+    <audio controls>
+        <source src="PlaySound?filename={{$dir}}{{.Name}}" type="audio/mpeg">
+          use a browser that support audio
+    </audio>
+  </td>
 {{end}}
 </tr>
 {{end}}

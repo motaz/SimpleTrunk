@@ -7,9 +7,11 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -1085,6 +1087,56 @@ func DownloadSound(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Disposition", "attachment;filename="+name)
 			DownloadFile(AgentUrl+"DownloadFile", bytes, contenttype, w)
 
+		} else {
+			http.Redirect(w, r, "Home?m=Select%20PBX", http.StatusTemporaryRedirect)
+		}
+	} else {
+		http.Redirect(w, r, "login", http.StatusTemporaryRedirect)
+	}
+}
+
+// PlaySound converts sound source file to mp3 and streams it .
+// it uses the linux 'sox' command-line tool 
+// with a compression factor of 2 for small size. 
+//
+// the function expects a "filename" query parameter containing the absolute path 
+// to the source audio. It includes a safety check to ensure the path resides 
+// within the allowed asterisk sounds directory.
+func PlaySound(w http.ResponseWriter, r *http.Request) {
+	exist, _ := CheckSession(r)
+	if exist {
+		pbx := GetCookieValue(r, "file")
+		pbxfile := GetPBXDir() + pbx
+		if FileExist(pbxfile) && pbx != "" {
+
+			AgentUrl := GetConfigValueFrom(pbxfile, "url", "")
+			if AgentUrl != "" {
+				if string(AgentUrl[len(AgentUrl)-1]) != "/" {
+					AgentUrl += "/"
+				}
+			}
+
+			filename := r.FormValue("filename")
+			if filename == "" {
+        http.Error(w, "no file sent", http.StatusBadRequest)
+        return
+    	}
+    	// safety check
+			if !strings.HasPrefix(filename, "/usr/share/asterisk/sounds/") {
+    			http.Error(w, "can't use untrused pahts", http.StatusForbidden)
+    			return
+			}
+
+			w.Header().Set("ContentType",  "audio/mpeg")
+			w.Header().Set("Transfer-Encoding", "chunked")
+
+			covertionCMD := exec.Command("sox", filename, "-C", "2", "-t", "mp3", "-")
+    	covertionCMD.Stdout = w
+    	covertionCMD.Stderr = os.Stderr
+    	if err := covertionCMD.Run(); err != nil {
+        log.Printf("sox streaming error: %v\n", err)
+    	}
+			
 		} else {
 			http.Redirect(w, r, "Home?m=Select%20PBX", http.StatusTemporaryRedirect)
 		}
