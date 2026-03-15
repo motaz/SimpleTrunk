@@ -12,7 +12,7 @@ import (
 var mytemplate *template.Template
 var PREFIX string
 
-const Version = "1.2.7 9Nov"
+const Version = "1.3.0 15Mar"
 
 //go:embed static
 var static embed.FS
