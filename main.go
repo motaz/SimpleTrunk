@@ -12,7 +12,7 @@ import (
 var mytemplate *template.Template
 var PREFIX string
 
-const Version = "1.2.7 9Nov"
+const Version = "1.3.0 15Mar"
 
 //go:embed static
 var static embed.FS
@@ -69,6 +69,7 @@ func main() {
 	http.HandleFunc(prefix+"/EditFile", EditFile)
 	//Sound
 	http.HandleFunc(prefix+"/UploadSound", UploadSound)
+	http.HandleFunc(prefix+"/DownloadSound", DownloadSound)
 	http.HandleFunc(prefix+"/PlaySound", PlaySound)
 	http.HandleFunc(prefix+"/UploadSoundFile", UploadSoundFile)
 
