@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/motaz/codeutils"
+	"gopkg.in/ini.v1"
 )
 
 var AdvancedTabs1 = []TabType{
@@ -1379,9 +1380,16 @@ func AMIConfig(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if AMIparamStatus(r, User.Admin) {
-				Data.Users, Data.Success, _ = AMIUsers(pbxfile, AgentUrl)
+				amiUsers, isComplete , _ := AMIUsers(pbxfile, AgentUrl)
+				Data.Users, Data.Success = amiUsers, isComplete
+				// if fileReadingErr != nil {
+					// log.Println(fileReadingErr)
+					// Data.Message = "Error: " + fileReadingErr.Error()
+					// Data.MessageType = "errormessage"
+				// }
 				err, Data.Ami, Data.Http = AMIStatus(AgentUrl)
 				if err != nil {
+					log.Println(err)
 					Data.Message = "Error: " + err.Error()
 					Data.MessageType = "errormessage"
 				}
@@ -1399,10 +1407,20 @@ func AMIConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// AMIUserType reflect the lines under the etc/Asterisk/manager.conf file
+// which is written like this :
+// ; this is a comment for the section
+// [usename]
+// ; this is a comment for the key "secret"
+// secret = userpassword ; this is another comment
+// read = users,cdr,others ; read permissions comment
+// write = all ; this allow access to all of them 
+// 
+// IsDefault is used to indicate if the user is used by SimpleTrunk
 type AMIUserType struct {
-	User    string
-	Spl     []string
-	Default bool
+	AMIUserName ,  AMIUserPassword, 	AMIUserNameComments ,  AMIUserPasswordComments,	AMIUserReadPermissionsComments ,AMIUserWritePermissionsComments string
+	AMIUserReadPermissions ,AMIUserWritePermissions []string
+	IsDefault bool
 }
 
 func getDefault(user, pass, pbxfile string) (res bool) {
@@ -1417,32 +1435,43 @@ func getDefault(user, pass, pbxfile string) (res bool) {
 	return res
 }
 
+// AMIUsers return an array of AMI user, an indicator to the success of the-
+// function, and an error
+// 
+// it reads users from file /etc/asterisk/manager.conf  
+// comments are skipped and not read
 func AMIUsers(pbxfile, Aurl string) (users []AMIUserType, success bool, err error) {
-	var bytes []byte
-	bytes, err = restCallURL(Aurl+"GetAMIUsersInfo", nil)
+	log.SetFlags(16)
+	fileData, err := GetFileData("manager.conf",pbxfile)
+	fileReader  := strings.NewReader(fileData.Content)
+	fileReaderCloser := io.NopCloser(fileReader)
+	defer fileReaderCloser.Close()
+
 	if err == nil {
-		var res ResponseType
-		err = json.Unmarshal(bytes, &res)
-		if err == nil {
-			if res.Success {
-				if res.Result != "" {
-					success = true
-					spl := strings.Split(res.Result, ";")
-					for i := 0; i+1 < len(spl); i++ {
-						spl1 := strings.Split(spl[i], ":")
-						// prevent the runtime error when reading comments
-						if len(spl1) < 2{
-							continue
-						}
-						user := strings.ReplaceAll(spl1[0], "[", "")
-						user = strings.ReplaceAll(user, "]", "")
-						users = append(users, AMIUserType{User: user, Spl: spl1, Default: getDefault(user, spl1[1], pbxfile)})
-					}
-				}
-			} else {
-				err = errors.New(res.Message)
+		cnfg, err := ini.Load(fileReaderCloser)
+    if err != nil {
+      return []AMIUserType{}, false, err
+    }
+		configFileSectionsNames := cnfg.SectionStrings()
+		for _, sectionName := range configFileSectionsNames {
+			if sectionName == "general" || sectionName == "DEFAULT"{
+				continue
 			}
+			user  :=  AMIUserType{
+				AMIUserName: sectionName ,
+				AMIUserPassword: cnfg.Section(sectionName).Key("secret").String(),
+				AMIUserReadPermissions: cnfg.Section(sectionName).Key("read").Strings(","),
+				AMIUserWritePermissions: cnfg.Section(sectionName).Key("read").Strings(","),
+				IsDefault: getDefault(sectionName,cnfg.Section(sectionName).Key("secret").String() ,pbxfile),
+			  AMIUserNameComments: cnfg.Section(sectionName).Comment,
+			  AMIUserPasswordComments: cnfg.Section(sectionName).Key("secret").Comment,
+			  AMIUserReadPermissionsComments: cnfg.Section(sectionName).Key("read").Comment,
+			  AMIUserWritePermissionsComments: cnfg.Section(sectionName).Key("read").Comment,
+			}
+			log.Printf("\n section %s is %#v\n", sectionName, user)
+			users = append(users, user)
 		}
+		return users, true, nil
 	}
 	return
 }

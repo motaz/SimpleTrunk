@@ -19,17 +19,17 @@
 </tr>
 {{ $IsAdmin := .IsAdmin}}
 {{ range .Users }}
-<tr><td>{{.User}}</td>
-<td>{{ index .Spl 1}}</td>
-<td>{{ index .Spl 2}}</td>
-<td>{{ index .Spl 3}}</td>
+  <tr><td>{{.AMIUserName}}{{.AMIUserNameComments}}</td>
+    <td>{{ .AMIUserPassword}}{{.AMIUserPasswordComments}}</td>
+    <td>{{.AMIUserReadPermissions }}{{.AMIUserReadPermissionsComments}}</td>
+    <td>{{.AMIUserWritePermissions}}{{.AMIUserWritePermissionsComments}}</td>
 {{ if $IsAdmin}}
-<td><a href="AMIConfig?edf={{index .Spl 0}}">Edit</a></td>
+<td><a href="AMIConfig?edf={{.AMIUserName}}">Edit</a></td>
 <td>
-{{ if .Default}}
+{{ if .IsDefault}}
 Default
 {{else}}
-<a href="AMIConfig?def=[{{.User}}]">Set Default</a>
+<a href="AMIConfig?def=[{{.AMIUserName}}]">Set Default</a>
 {{end}}
 {{end}}
 </td>
