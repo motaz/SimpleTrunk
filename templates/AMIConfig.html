@@ -19,20 +19,33 @@
 </tr>
 {{ $IsAdmin := .IsAdmin}}
 {{ range .Users }}
-  <tr><td>{{.AMIUserName}}{{.AMIUserNameComments}}</td>
-    <td>{{ .AMIUserPassword}}{{.AMIUserPasswordComments}}</td>
-    <td>{{.AMIUserReadPermissions }}{{.AMIUserReadPermissionsComments}}</td>
-    <td>{{.AMIUserWritePermissions}}{{.AMIUserWritePermissionsComments}}</td>
-{{ if $IsAdmin}}
-<td><a href="AMIConfig?edf={{.AMIUserName}}">Edit</a></td>
-<td>
-{{ if .IsDefault}}
-Default
-{{else}}
-<a href="AMIConfig?def=[{{.AMIUserName}}]">Set Default</a>
-{{end}}
-{{end}}
-</td>
+<tr>
+  <td>
+      <p style="margin:0;padding:0; color: #5e615f">{{.AMIUserNameComments}}</p>
+      <p>{{.AMIUserName}}</p>
+  </td>
+  <td> 
+      <p style="margin:0;padding:0; color: #5e615f">{{.AMIUserPasswordComments}}</p>
+      <p>{{ .AMIUserPassword}}</p>
+  </td>
+  <td>
+     <p style="margin:0;padding:0; color: #5e615f">{{.AMIUserReadPermissionsComments}}</p>
+      <p>{{.AMIUserReadPermissions }}</p>
+  </td>
+  <td>
+      <p style="margin:0;padding:0; color: #5e615f">{{.AMIUserWritePermissionsComments}}</p>
+      <p> {{.AMIUserWritePermissions}}</p>
+  </td>
+  {{ if $IsAdmin}}
+  <td><a href="AMIConfig?edf={{.AMIUserName}}">Edit</a></td>
+  <td>
+  {{ if .IsDefault}}
+  Default
+  {{else}}
+      <a href="AMIConfig?def=[{{.AMIUserName}}]&pass={{.AMIUserPassword}}">Set Default</a>
+  {{end}}
+  {{end}}
+  </td>
 </tr>
 {{end}}
 </table><hr/>

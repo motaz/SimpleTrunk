@@ -1216,7 +1216,8 @@ func CDRparamStatus(request *http.Request, admin bool) bool {
 	return (request.FormValue("cf") == "" && request.FormValue("edit") == "") || !admin
 }
 
-func setDefault(w http.ResponseWriter, Aurl, pbxfile string, r *http.Request, uname string) (err error) {
+func setDefault(w http.ResponseWriter, Aurl, pbxfile string, r *http.Request, uname string, pass string) (err error) {
+	log.Printf("\n\nset setDefault pbxfile :\n%#v\n\n", pbxfile)
 	var spl []string
 	var user string
 	obj := make(map[string]string)
@@ -1232,7 +1233,7 @@ func setDefault(w http.ResponseWriter, Aurl, pbxfile string, r *http.Request, un
 			user = strings.ReplaceAll(spl[0], "[", "")
 			user = strings.ReplaceAll(user, "]", "")
 			SetConfigValueTo(pbxfile, "amiuser", user)
-			SetConfigValueTo(pbxfile, "amipass", spl[1])
+			SetConfigValueTo(pbxfile, "amipass", pass)
 			http.Redirect(w, r, "AMIConfig", http.StatusTemporaryRedirect)
 		} else {
 			err = errors.New(res.Message)
@@ -1241,19 +1242,18 @@ func setDefault(w http.ResponseWriter, Aurl, pbxfile string, r *http.Request, un
 	return
 }
 
+// doAddAMIUser adds a new AMI user to the configuration file
 func doAddAMIUser(r *http.Request, w http.ResponseWriter, Aurl string) (err error) {
 	obj := make(map[string]string)
+	obj["1"] =  r.FormValue("Username")
 	obj["Username"] = r.FormValue("user")
+	obj["2"] =  r.FormValue("passwordcomment")
 	obj["Secret"] = r.FormValue("sec")
+	obj["3"] =  r.FormValue("readcomment")
 	obj["Read"] = r.FormValue("read")
+	obj["4"] =  r.FormValue("writecomment")
 	obj["Write"] = r.FormValue("write")
-	obj["Addi"] = r.FormValue("addi")
-	// HACK: the `;` reading create a runtime error (index out of range)
-	for _, value := range obj {
-		if strings.Contains(value, ";"){
-			return errors.New("the `;` character is reserved for comments, do not use it")
-		}
-	}
+	// obj["Addi"] = r.FormValue("addi")
 	bytes, _ := json.Marshal(obj)
 	var response []byte
 	response, err = restCallURL(Aurl+"AddAMIUser", bytes)
@@ -1297,12 +1297,15 @@ func doModAMIUser(r *http.Request, w http.ResponseWriter, Aurl string) (err erro
 	obj["Read"] = r.FormValue("read")
 	obj["Write"] = r.FormValue("write")
 	obj["Addi"] = r.FormValue("addi")
-	// HACK: the `;` reading create a runtime error (index out of range)
-	for _, value := range obj {
-		if strings.Contains(value, ";"){
-			return errors.New("the `;` character is reserved for comments, do not use it")
+	// FIX: comment written with the AMI username saved as part of the username
+	// asterisk can't read a username Containing a comment inside 
+	// example : [username ; comment]
+		if strings.Contains(obj["NUsername"], ";"){
+			return errors.New("the `;` character is reserved for comments, do not use with the user name")
 		}
-	}
+		if hasSemicolonInLastLine(obj["Addi"]){
+			return errors.New("u can't write a comment in the last line")
+		}
 	req, _ := json.Marshal(obj)
 	var data []byte
 	data, err = restCallURL(Aurl+"ModifyAMIUser", req)
@@ -1319,11 +1322,22 @@ func doModAMIUser(r *http.Request, w http.ResponseWriter, Aurl string) (err erro
 	return
 }
 
+// hasSemicolonInLastLine checks if the last line of a multiline string start with a semicolon.
+func hasSemicolonInLastLine(s string) bool{
+	lines := strings.Split(s, "\n")
+	if len(lines) == 0{
+		return false
+	}
+	lastLine := lines[len(lines)-1]
+	return strings.HasPrefix(lastLine, ";")
+}
+
 func AMIConfig(w http.ResponseWriter, r *http.Request) {
 	exist, User := CheckSession(r)
 	if exist {
 		pbx := GetCookieValue(r, "file")
 		pbxfile := GetPBXDir() + pbx
+		log.Printf("\n\nset AMIConfig pbxfile :\n%#v\n\n", pbxfile)
 		if FileExist(pbxfile) && pbx != "" {
 			var Data AMIConfigType
 			Data.HeaderType = GetAdvancedHeader(User, "Configuration", "", r)
@@ -1336,7 +1350,7 @@ func AMIConfig(w http.ResponseWriter, r *http.Request) {
 			var err error
 			if r.FormValue("def") != "" {
 				if User.Admin {
-					err = setDefault(w, AgentUrl, pbxfile, r, r.FormValue("def"))
+					err = setDefault(w, AgentUrl, pbxfile, r, r.FormValue("def"),r.FormValue("pass"))
 					if err != nil {
 						Data.Message = "Error: " + err.Error()
 						Data.MessageType = "errormessage"
@@ -1382,11 +1396,6 @@ func AMIConfig(w http.ResponseWriter, r *http.Request) {
 			if AMIparamStatus(r, User.Admin) {
 				amiUsers, isComplete , _ := AMIUsers(pbxfile, AgentUrl)
 				Data.Users, Data.Success = amiUsers, isComplete
-				// if fileReadingErr != nil {
-					// log.Println(fileReadingErr)
-					// Data.Message = "Error: " + fileReadingErr.Error()
-					// Data.MessageType = "errormessage"
-				// }
 				err, Data.Ami, Data.Http = AMIStatus(AgentUrl)
 				if err != nil {
 					log.Println(err)
@@ -1426,6 +1435,7 @@ type AMIUserType struct {
 func getDefault(user, pass, pbxfile string) (res bool) {
 	suser := GetConfigValueFrom(pbxfile, "amiuser", "")
 	spass := GetConfigValueFrom(pbxfile, "amipass", "")
+	log.Printf("\nsuser : %s -> user : %s \nspass : %s -> pass %s", suser, user, spass, pass)
 	if suser == user && spass == pass {
 		res = true
 	} else {
@@ -1441,7 +1451,7 @@ func getDefault(user, pass, pbxfile string) (res bool) {
 // it reads users from file /etc/asterisk/manager.conf  
 // comments are skipped and not read
 func AMIUsers(pbxfile, Aurl string) (users []AMIUserType, success bool, err error) {
-	log.SetFlags(16)
+	log.SetFlags(log.Lshortfile)
 	fileData, err := GetFileData("manager.conf",pbxfile)
 	fileReader  := strings.NewReader(fileData.Content)
 	fileReaderCloser := io.NopCloser(fileReader)
@@ -1457,18 +1467,19 @@ func AMIUsers(pbxfile, Aurl string) (users []AMIUserType, success bool, err erro
 			if sectionName == "general" || sectionName == "DEFAULT"{
 				continue
 			}
+			pass := cnfg.Section(sectionName).Key("secret").String()
+			isCurrentUser := getDefault(sectionName,pass ,pbxfile)
 			user  :=  AMIUserType{
 				AMIUserName: sectionName ,
-				AMIUserPassword: cnfg.Section(sectionName).Key("secret").String(),
+				AMIUserPassword:pass,
 				AMIUserReadPermissions: cnfg.Section(sectionName).Key("read").Strings(","),
 				AMIUserWritePermissions: cnfg.Section(sectionName).Key("read").Strings(","),
-				IsDefault: getDefault(sectionName,cnfg.Section(sectionName).Key("secret").String() ,pbxfile),
+				IsDefault:isCurrentUser ,
 			  AMIUserNameComments: cnfg.Section(sectionName).Comment,
 			  AMIUserPasswordComments: cnfg.Section(sectionName).Key("secret").Comment,
 			  AMIUserReadPermissionsComments: cnfg.Section(sectionName).Key("read").Comment,
 			  AMIUserWritePermissionsComments: cnfg.Section(sectionName).Key("read").Comment,
 			}
-			log.Printf("\n section %s is %#v\n", sectionName, user)
 			users = append(users, user)
 		}
 		return users, true, nil
