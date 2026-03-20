@@ -1244,16 +1244,21 @@ func setDefault(w http.ResponseWriter, Aurl, pbxfile string, r *http.Request, un
 
 // doAddAMIUser adds a new AMI user to the configuration file
 func doAddAMIUser(r *http.Request, w http.ResponseWriter, Aurl string) (err error) {
-	obj := make(map[string]string)
-	obj["1"] =  r.FormValue("Username")
+  obj := make(map[string]string)
 	obj["Username"] = r.FormValue("user")
-	obj["2"] =  r.FormValue("passwordcomment")
 	obj["Secret"] = r.FormValue("sec")
-	obj["3"] =  r.FormValue("readcomment")
 	obj["Read"] = r.FormValue("read")
-	obj["4"] =  r.FormValue("writecomment")
 	obj["Write"] = r.FormValue("write")
-	// obj["Addi"] = r.FormValue("addi")
+	obj["Addi"] = r.FormValue("aditionalConf")
+	// FIX: comment written with the AMI username saved as part of the username
+	// asterisk can't read a username Containing a comment inside 
+	// example : [username ; comment]
+		if strings.Contains(obj["Username"], ";"){
+			return errors.New("the `;` character is reserved for comments, do not use with the user name")
+		}
+		if hasSemicolonInLastLine(obj["Addi"]){
+			return errors.New("u can't write a comment in the last line")
+		}
 	bytes, _ := json.Marshal(obj)
 	var response []byte
 	response, err = restCallURL(Aurl+"AddAMIUser", bytes)
@@ -1337,7 +1342,6 @@ func AMIConfig(w http.ResponseWriter, r *http.Request) {
 	if exist {
 		pbx := GetCookieValue(r, "file")
 		pbxfile := GetPBXDir() + pbx
-		log.Printf("\n\nset AMIConfig pbxfile :\n%#v\n\n", pbxfile)
 		if FileExist(pbxfile) && pbx != "" {
 			var Data AMIConfigType
 			Data.HeaderType = GetAdvancedHeader(User, "Configuration", "", r)
@@ -1435,7 +1439,6 @@ type AMIUserType struct {
 func getDefault(user, pass, pbxfile string) (res bool) {
 	suser := GetConfigValueFrom(pbxfile, "amiuser", "")
 	spass := GetConfigValueFrom(pbxfile, "amipass", "")
-	log.Printf("\nsuser : %s -> user : %s \nspass : %s -> pass %s", suser, user, spass, pass)
 	if suser == user && spass == pass {
 		res = true
 	} else {
