@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/motaz/codeutils"
+	"gopkg.in/ini.v1"
 )
 
 var AdvancedTabs1 = []TabType{
@@ -1215,7 +1216,8 @@ func CDRparamStatus(request *http.Request, admin bool) bool {
 	return (request.FormValue("cf") == "" && request.FormValue("edit") == "") || !admin
 }
 
-func setDefault(w http.ResponseWriter, Aurl, pbxfile string, r *http.Request, uname string) (err error) {
+func setDefault(w http.ResponseWriter, Aurl, pbxfile string, r *http.Request, uname string, pass string) (err error) {
+	log.Printf("\n\nset setDefault pbxfile :\n%#v\n\n", pbxfile)
 	var spl []string
 	var user string
 	obj := make(map[string]string)
@@ -1231,7 +1233,7 @@ func setDefault(w http.ResponseWriter, Aurl, pbxfile string, r *http.Request, un
 			user = strings.ReplaceAll(spl[0], "[", "")
 			user = strings.ReplaceAll(user, "]", "")
 			SetConfigValueTo(pbxfile, "amiuser", user)
-			SetConfigValueTo(pbxfile, "amipass", spl[1])
+			SetConfigValueTo(pbxfile, "amipass", pass)
 			http.Redirect(w, r, "AMIConfig", http.StatusTemporaryRedirect)
 		} else {
 			err = errors.New(res.Message)
@@ -1240,19 +1242,23 @@ func setDefault(w http.ResponseWriter, Aurl, pbxfile string, r *http.Request, un
 	return
 }
 
+// doAddAMIUser adds a new AMI user to the configuration file
 func doAddAMIUser(r *http.Request, w http.ResponseWriter, Aurl string) (err error) {
-	obj := make(map[string]string)
+  obj := make(map[string]string)
 	obj["Username"] = r.FormValue("user")
 	obj["Secret"] = r.FormValue("sec")
 	obj["Read"] = r.FormValue("read")
 	obj["Write"] = r.FormValue("write")
-	obj["Addi"] = r.FormValue("addi")
-	// HACK: the `;` reading create a runtime error (index out of range)
-	for _, value := range obj {
-		if strings.Contains(value, ";"){
-			return errors.New("the `;` character is reserved for comments, do not use it")
+	obj["Addi"] = r.FormValue("aditionalConf")
+	// FIX: comment written with the AMI username saved as part of the username
+	// asterisk can't read a username Containing a comment inside 
+	// example : [username ; comment]
+		if strings.Contains(obj["Username"], ";"){
+			return errors.New("the `;` character is reserved for comments, do not use with the user name")
 		}
-	}
+		if hasSemicolonInLastLine(obj["Addi"]){
+			return errors.New("u can't write a comment in the last line")
+		}
 	bytes, _ := json.Marshal(obj)
 	var response []byte
 	response, err = restCallURL(Aurl+"AddAMIUser", bytes)
@@ -1296,12 +1302,15 @@ func doModAMIUser(r *http.Request, w http.ResponseWriter, Aurl string) (err erro
 	obj["Read"] = r.FormValue("read")
 	obj["Write"] = r.FormValue("write")
 	obj["Addi"] = r.FormValue("addi")
-	// HACK: the `;` reading create a runtime error (index out of range)
-	for _, value := range obj {
-		if strings.Contains(value, ";"){
-			return errors.New("the `;` character is reserved for comments, do not use it")
+	// FIX: comment written with the AMI username saved as part of the username
+	// asterisk can't read a username Containing a comment inside 
+	// example : [username ; comment]
+		if strings.Contains(obj["NUsername"], ";"){
+			return errors.New("the `;` character is reserved for comments, do not use with the user name")
 		}
-	}
+		if hasSemicolonInLastLine(obj["Addi"]){
+			return errors.New("u can't write a comment in the last line")
+		}
 	req, _ := json.Marshal(obj)
 	var data []byte
 	data, err = restCallURL(Aurl+"ModifyAMIUser", req)
@@ -1316,6 +1325,16 @@ func doModAMIUser(r *http.Request, w http.ResponseWriter, Aurl string) (err erro
 		}
 	}
 	return
+}
+
+// hasSemicolonInLastLine checks if the last line of a multiline string start with a semicolon.
+func hasSemicolonInLastLine(s string) bool{
+	lines := strings.Split(s, "\n")
+	if len(lines) == 0{
+		return false
+	}
+	lastLine := lines[len(lines)-1]
+	return strings.HasPrefix(lastLine, ";")
 }
 
 func AMIConfig(w http.ResponseWriter, r *http.Request) {
@@ -1335,7 +1354,7 @@ func AMIConfig(w http.ResponseWriter, r *http.Request) {
 			var err error
 			if r.FormValue("def") != "" {
 				if User.Admin {
-					err = setDefault(w, AgentUrl, pbxfile, r, r.FormValue("def"))
+					err = setDefault(w, AgentUrl, pbxfile, r, r.FormValue("def"),r.FormValue("pass"))
 					if err != nil {
 						Data.Message = "Error: " + err.Error()
 						Data.MessageType = "errormessage"
@@ -1379,9 +1398,11 @@ func AMIConfig(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if AMIparamStatus(r, User.Admin) {
-				Data.Users, Data.Success, _ = AMIUsers(pbxfile, AgentUrl)
+				amiUsers, isComplete , _ := AMIUsers(pbxfile, AgentUrl)
+				Data.Users, Data.Success = amiUsers, isComplete
 				err, Data.Ami, Data.Http = AMIStatus(AgentUrl)
 				if err != nil {
+					log.Println(err)
 					Data.Message = "Error: " + err.Error()
 					Data.MessageType = "errormessage"
 				}
@@ -1399,10 +1420,20 @@ func AMIConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// AMIUserType reflect the lines under the etc/Asterisk/manager.conf file
+// which is written like this :
+// ; this is a comment for the section
+// [usename]
+// ; this is a comment for the key "secret"
+// secret = userpassword ; this is another comment
+// read = users,cdr,others ; read permissions comment
+// write = all ; this allow access to all of them 
+// 
+// IsDefault is used to indicate if the user is used by SimpleTrunk
 type AMIUserType struct {
-	User    string
-	Spl     []string
-	Default bool
+	AMIUserName ,  AMIUserPassword, 	AMIUserNameComments ,  AMIUserPasswordComments,	AMIUserReadPermissionsComments ,AMIUserWritePermissionsComments string
+	AMIUserReadPermissions ,AMIUserWritePermissions []string
+	IsDefault bool
 }
 
 func getDefault(user, pass, pbxfile string) (res bool) {
@@ -1417,32 +1448,44 @@ func getDefault(user, pass, pbxfile string) (res bool) {
 	return res
 }
 
+// AMIUsers return an array of AMI user, an indicator to the success of the-
+// function, and an error
+// 
+// it reads users from file /etc/asterisk/manager.conf  
+// comments are skipped and not read
 func AMIUsers(pbxfile, Aurl string) (users []AMIUserType, success bool, err error) {
-	var bytes []byte
-	bytes, err = restCallURL(Aurl+"GetAMIUsersInfo", nil)
+	log.SetFlags(log.Lshortfile)
+	fileData, err := GetFileData("manager.conf",pbxfile)
+	fileReader  := strings.NewReader(fileData.Content)
+	fileReaderCloser := io.NopCloser(fileReader)
+	defer fileReaderCloser.Close()
+
 	if err == nil {
-		var res ResponseType
-		err = json.Unmarshal(bytes, &res)
-		if err == nil {
-			if res.Success {
-				if res.Result != "" {
-					success = true
-					spl := strings.Split(res.Result, ";")
-					for i := 0; i+1 < len(spl); i++ {
-						spl1 := strings.Split(spl[i], ":")
-						// prevent the runtime error when reading comments
-						if len(spl1) < 2{
-							continue
-						}
-						user := strings.ReplaceAll(spl1[0], "[", "")
-						user = strings.ReplaceAll(user, "]", "")
-						users = append(users, AMIUserType{User: user, Spl: spl1, Default: getDefault(user, spl1[1], pbxfile)})
-					}
-				}
-			} else {
-				err = errors.New(res.Message)
+		cnfg, err := ini.Load(fileReaderCloser)
+    if err != nil {
+      return []AMIUserType{}, false, err
+    }
+		configFileSectionsNames := cnfg.SectionStrings()
+		for _, sectionName := range configFileSectionsNames {
+			if sectionName == "general" || sectionName == "DEFAULT"{
+				continue
 			}
+			pass := cnfg.Section(sectionName).Key("secret").String()
+			isCurrentUser := getDefault(sectionName,pass ,pbxfile)
+			user  :=  AMIUserType{
+				AMIUserName: sectionName ,
+				AMIUserPassword:pass,
+				AMIUserReadPermissions: cnfg.Section(sectionName).Key("read").Strings(","),
+				AMIUserWritePermissions: cnfg.Section(sectionName).Key("read").Strings(","),
+				IsDefault:isCurrentUser ,
+			  AMIUserNameComments: cnfg.Section(sectionName).Comment,
+			  AMIUserPasswordComments: cnfg.Section(sectionName).Key("secret").Comment,
+			  AMIUserReadPermissionsComments: cnfg.Section(sectionName).Key("read").Comment,
+			  AMIUserWritePermissionsComments: cnfg.Section(sectionName).Key("read").Comment,
+			}
+			users = append(users, user)
 		}
+		return users, true, nil
 	}
 	return
 }
